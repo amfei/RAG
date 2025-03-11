@@ -1,5 +1,5 @@
 
-## Job search RAG
+## More advanced
 #!pip install load_dotenv pdfplumber chromadb schedule rank_bm25 selenium webdriver_manager openai ta kaleido dotenv requests-html
 # !pip install -U langchain-openai
 # !pip uninstall langchain langchain-core langchain-aws langchain-community -y
@@ -40,13 +40,6 @@ from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-#  Load Pretrained embedding Model
-embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-
-#  Initialize ChromaDB for Job Storage
-chroma_client = chromadb.PersistentClient(path="./chromadb_store")
-#A ChromaDB storage unit (namespace) for job embeddings.
-collection = chroma_client.get_or_create_collection(name="job_descriptions")
 
 def extract_linkedin_job_description(job_url):
     """
@@ -115,7 +108,7 @@ def scrape_linkedin_jobs(job_titles, locations, num_jobs, days_filter, EXCLUDED_
 
             response = requests.get(url, headers=headers)
             if response.status_code != 200:
-                print(f"❌ Failed to fetch jobs for {job_title} in {location}. Status Code: {response.status_code}")
+                print(f" Failed to fetch jobs for {job_title} in {location}. Status Code: {response.status_code}")
                 continue
 
             soup = BeautifulSoup(response.text, "html.parser")
@@ -124,7 +117,7 @@ def scrape_linkedin_jobs(job_titles, locations, num_jobs, days_filter, EXCLUDED_
             for job in job_listings:
                 title_elem = job.find("h3", class_="base-search-card__title")
                 company_elem = job.find("h4", class_="base-search-card__subtitle")
-                location_elem = job.find("span", class_="job-search-card__location")  # ✅ Extract correct location
+                location_elem = job.find("span", class_="job-search-card__location")  #  Extract correct location
                 link_elem = job.find("a")
                 date_elem = job.find("time")
 
@@ -135,46 +128,45 @@ def scrape_linkedin_jobs(job_titles, locations, num_jobs, days_filter, EXCLUDED_
 
                 title = title_elem.text.strip()
                 company = company_elem.text.strip()
-                job_location = location_elem.text.strip()  # ✅ Extract actual job location
+                job_location = location_elem.text.strip()  #  Extract actual job location
                 link = link_elem["href"]
                 posted_date_text = str(date_elem["datetime"])
                 
 
 
 
-                # ✅ Filter jobs older than N days
+                #  Filter jobs older than N days
                 
                 posted_date = datetime.strptime(posted_date_text.strip(), "%Y-%m-%d")
                 if datetime.now() - posted_date > timedelta(days=days_filter):
                     continue  # Skip old jobs
 
-                # ✅ **Ensure title does not contain excluded words**
+                #  **Ensure title does not contain excluded words**
                 if any(excluded.lower() in title.lower() for excluded in EXCLUDED_TITLES):
                     continue  # Skip senior-level jobs
 
                 job_description = extract_linkedin_job_description(link)
 
-                # # ✅ **Ensure title does not contain excluded words**
+                # #  **Ensure title does not contain excluded words**
                 # if not any(skill.lower() in job_description.lower() for skill in REQUIRED_SKILLS):
                 #     continue  # Skip senior-level jobs
 
 
 
-                # ✅ **Format job details**
+                # **Format job details**
                 job_info = f"{title} at {company} in {job_location}. More details: {link}"
 
                 jobs.append({
                     "title": title,
                     "company": company,
-                    "location": job_location,  # ✅ Store the extracted job location
+                    "location": job_location,  #  Store the extracted job location
                     "link": link,
                     "info":job_info,
                     "description": job_description
                 })
 
-    print(f"✅ Scraped {len(jobs)} job postings with correct locations.")
+    print(f" Scraped {len(jobs)} job postings with correct locations.")
     return jobs
-
 
 def extract_text_from_pdf(pdf_path):
     """
@@ -184,22 +176,21 @@ def extract_text_from_pdf(pdf_path):
         text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
     return text.strip()
 
-
 def store_jobs_in_chromadb(jobs, embedding_model):
     """
     Converts job descriptions into embeddings and stores them in ChromaDB.
     Ensures old jobs are cleared before adding new ones.
     """
     if not jobs:
-        print("⚠️ No jobs to store in ChromaDB.")
+        print(" No jobs to store in ChromaDB.")
         return
 
-    # ✅ **Correctly clear old jobs before adding new ones**
+    # **Correctly clear old jobs before adding new ones**
     try:
         collection.delete(where={"title": {"$ne": ""}})  # Deletes all jobs
-        print("🗑️ Cleared old jobs from ChromaDB.")
+        print(" Cleared old jobs from ChromaDB.")
     except ValueError as e:
-        print(f"⚠️ Failed to clear old jobs: {e}")
+        print(f" Failed to clear old jobs: {e}")
 
     for job in jobs:
         embedding = embedding_model.encode(
@@ -220,7 +211,7 @@ def store_jobs_in_chromadb(jobs, embedding_model):
             metadatas=[metadata]
         )
 
-    print(f"✅ Stored {len(jobs)} jobs in ChromaDB.")
+    print(f" Stored {len(jobs)} jobs in ChromaDB.")
 
 def retrieve_jobs_from_chromadb(collection):
     """
@@ -238,10 +229,10 @@ def retrieve_jobs_from_chromadb(collection):
                 "link": meta.get("link", "#")
             })
 
-    print(f"✅ Retrieved {len(jobs)} jobs from ChromaDB.")
+    print(f" Retrieved {len(jobs)} jobs from ChromaDB.")
     return jobs
 
-def retrieve_top_jobs_hybrid(cv_text, jobs, top_n, similarity_threshold=0.05):
+def retrieve_top_jobs_hybrid(cv_text, jobs, top_n):
     """
     Hybrid Search: Combines BM25 keyword search and RAG (semantic similarity).
     Removes duplicate job postings with similar Hybrid Scores.
@@ -263,38 +254,99 @@ def retrieve_top_jobs_hybrid(cv_text, jobs, top_n, similarity_threshold=0.05):
     scored_jobs = sorted(zip(hybrid_scores, jobs), key=lambda x: x[0], reverse=True)
 
     #  Remove Duplicate Job Listings (Similar Hybrid Scores)
-    deduplicated_jobs = []
+    uinque_jobs = []
     seen_links = set()
 
     for score, job in scored_jobs:
-        if job["link"] in seen_links:
-            continue  # Skip duplicate links
 
-        # ✅ Check if similar jobs are already in the list
-        if any(abs(score - existing_score) < similarity_threshold for existing_score, _ in deduplicated_jobs):
+        # Check if similar jobs are already in the list
+        if any(abs(score - existing_score) == 0 for existing_score, _ in uinque_jobs):
             continue  # Skip if a very similar job is already stored
 
-        deduplicated_jobs.append((score, job))
+        uinque_jobs.append((score, job))
         seen_links.add(job["link"])
 
-        if len(deduplicated_jobs) >= top_n:
+        if len(uinque_jobs) >= top_n:
             break  # Stop once we have enough jobs
 
-    return scored_jobs[:top_n] # deduplicated_jobs
+    return  uinque_jobs #scored_jobs[:top_n] #
+
+#  Job Search Function (Scrapes and Emails Results)
+def job_search_and_email():
+    print(f"\n Running Job Search at {datetime.now()}...\n")
+    
+    #Step 1: Retrieve Stored Jobs or Scrape New Ones
+    stored_jobs = retrieve_jobs_from_chromadb(collection)
+    if not stored_jobs:
+        print(" No stored jobs found, scraping new listings...")
+        job_listings = scrape_linkedin_jobs(job_titles, locations, num_jobs, days_filter, EXCLUDED_TITLES)
+        store_jobs_in_chromadb(job_listings)
+        stored_jobs = retrieve_jobs_from_chromadb()
+
+    #  Step 2: Retrieve Best Job Matches
+    top_jobs = retrieve_top_jobs_hybrid(cv_text, stored_jobs, top_n)
+
+    # Step 3: Format Job Listings for Email
+    if top_jobs:
+        email_content = "\n🔹 Top Job Matches Based on Your CV "
+        for i, (score, job) in enumerate(top_jobs):
+            priority_tag = " HIGH PRIORITY" if score > 0.7 else ""
+            email_content += f"{i+1}. **{job['title']}** at **{job['company']}** ({job['location']}) (Score: {score:.4f}) {priority_tag}\n"
+            email_content += f"   🔗 ({job['link']})\n\n"
+    else:
+        email_content = "No job matches found today. Try again later.\n"
+
+    #  Step 4: Send Email (Only Once)
+    send_email(RECIPIENT_EMAIL, "Daily AI-Powered Job Matches", email_content)
+
+#  Email Sending Function
+def send_email(recipient_email, subject, body):
+    print(body)  # Debugging: Prints email content before sending
+
+    msg = MIMEMultipart()
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = recipient_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(SENDER_EMAIL, APP_PASS)
+            server.sendmail(SENDER_EMAIL, recipient_email, msg.as_string())
+        print(" Email sent successfully!")
+    except Exception as e:
+        print(f" Failed to send email: {e}")
+
+
+#  Load Pretrained embedding Model
+embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+
+#  Initialize ChromaDB for Job Storage
+chroma_client = chromadb.PersistentClient(path="./chromadb_store")
+#A ChromaDB storage unit (namespace) for job embeddings.
+collection = chroma_client.get_or_create_collection(name="job_descriptions")
 
 # Define Unwanted Job Titles (Exclude)
-EXCLUDED_TITLES = []
+EXCLUDED_TITLES = ["Data Engineer", "Junior", "Underwriting",  "Manager", "Head", "Lead","VP", "AVP", "SVP", "Director", "Vice President", "Chief", "Analyst", "Intern", "CO-OP" 'Officer']
+
 # Define Required Skills (Jobs Must Include at Least One)
-REQUIRED_SKILLS = []]
+REQUIRED_SKILLS = ["Master's", 'PhD']
 
-cv_path = "cv.pdf"  # Replace with your actual CV file
+cv_path = "AmirFeizi.pdf"  # Replace with your actual CV file
 
-job_titles = [ ]
+job_titles = []
 
-locations = ["Canada"]
+locations = ["Canada"]# 'Remote', "Montreal"
 num_jobs = 200
-days_filter = 10
+days_filter = 1
 top_n = 20  # Number of top matches to retrieve
+# Email Credentials (Use App Password)
+SENDER_EMAIL = ""
+APP_PASS = ""
+RECIPIENT_EMAIL = ""
+
+
 
 #  Step 1: Extract CV Text
 cv_text = extract_text_from_pdf(cv_path)
@@ -310,10 +362,13 @@ stored_jobs = retrieve_jobs_from_chromadb(collection)
 #  Step 4: Retrieve Best Job Matches (Hybrid Search with Deduplication)
 top_jobs = retrieve_top_jobs_hybrid(cv_text, stored_jobs, top_n)
 
-# Step 5: Display Results
-print("\n🔹 **Top Job Matches Based on Your CV** 🔹")
-for i, (score, job) in enumerate(top_jobs):
-    print(f"{i+1}. {job['title']} at {job['company']} in {job['location']} (Hybrid Score: {score:.4f})")
-    print(f"   🔗 {job['link']}\n")
+# # Step 5: Display Results
+# print("\n🔹 **Top Job Matches Based on Your CV** 🔹")
+# for i, (score, job) in enumerate(top_jobs):
+#     print(f"{i+1}. {job['title']} at {job['company']} in {job['location']} (Hybrid Score: {score:.4f})")
+#     print(f"   🔗 {job['link']}\n")
 
+
+#  Run Job Search and Email Once
+job_search_and_email()
 
