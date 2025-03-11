@@ -1,5 +1,6 @@
 
-## More advanced
+## Retrive Jobs and Send to your email Email
+
 #!pip install load_dotenv pdfplumber chromadb schedule rank_bm25 selenium webdriver_manager openai ta kaleido dotenv requests-html
 # !pip install -U langchain-openai
 # !pip uninstall langchain langchain-core langchain-aws langchain-community -y
