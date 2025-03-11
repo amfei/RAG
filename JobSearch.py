@@ -268,9 +268,9 @@ cv_path = "your_cv.pdf"  # Replace with your actual CV file
 
 job_titles = ["Data Scientist", "Machine Learning", "GenAI"]
 
-locations = ["Toronto","Montreal", "Ottawa", "Vancouver", "Boston", "New York", 'Florida', "San Francisco", "Seatel", "Silocon Vally"]
+locations = ["Toronto","Montreal"]#, "Ottawa", "Vancouver", "Boston", "New York", 'Florida', "San Francisco", "Seatel", "Silocon Vally"]
 num_jobs = 200
-days_filter = 10
+days_filter = 1
 top_n = 20  # Number of top matches to retrieve
 
 # ✅ Step 1: Extract CV Text
